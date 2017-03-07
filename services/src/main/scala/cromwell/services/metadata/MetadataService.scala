@@ -129,25 +129,26 @@ object MetadataService {
   }
 
   def throwableToMetadataEvents(metadataKey: MetadataKey, t: Throwable, failureIndex: Int = Random.nextInt(Int.MaxValue)): List[MetadataEvent] = {
-    val emptyCauseList = List(MetadataEvent.empty(metadataKey.copy(key = metadataKey.key + s"[$failureIndex]:causedBy[]")))
+    lazy val emptyCauseList = List(MetadataEvent.empty(metadataKey.copy(key = metadataKey.key + s"[$failureIndex]:causedBy[]")))
+    val keyAndIndex = s"${metadataKey.key}[$failureIndex]"
+    val messageKey = metadataKey.copy(key = s"$keyAndIndex:message")
+    val causeKey = metadataKey.copy(key = s"$keyAndIndex:causedBy")
 
     t match {
       case aggregation: ThrowableAggregation =>
-        val message = List(MetadataEvent(metadataKey.copy(key = s"${metadataKey.key}[$failureIndex]:message"), MetadataValue(aggregation.exceptionContext)))
+        val message = List(MetadataEvent(messageKey, MetadataValue(aggregation.exceptionContext)))
         val indexedCauses = aggregation.throwables.toList.zipWithIndex
         val indexedCauseEvents = if (indexedCauses.nonEmpty) {
           indexedCauses flatMap { case (cause, index) =>
-            val causeKey = metadataKey.copy(key = metadataKey.key + s"[$failureIndex]:causedBy")
             throwableToMetadataEvents(causeKey, cause, index)
           }
         } else {
           emptyCauseList
         }
-
         message ++ indexedCauseEvents
+
       case other =>
-        val message = List(MetadataEvent(metadataKey.copy(key = s"${metadataKey.key}[$failureIndex]:message"), MetadataValue(t.getMessage)))
-        val causeKey = metadataKey.copy(key = metadataKey.key + s"[$failureIndex]:causedBy")
+        val message = List(MetadataEvent(messageKey, MetadataValue(t.getMessage)))
         val cause = Option(t.getCause) map { cause => throwableToMetadataEvents(causeKey, cause, 0) } getOrElse emptyCauseList
         message ++ cause
     }
